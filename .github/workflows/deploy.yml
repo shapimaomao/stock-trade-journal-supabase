@@ -1,0 +1,50 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build
+        run: npm run build
+        env:
+          # 从 GitHub Secrets 注入 Supabase 配置 (仓库 Settings → Secrets and variables)
+          # 注意: 只注入 anon key, 绝不使用 service_role key!
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
