@@ -681,6 +681,7 @@ export default function App() {
         canRedo={canRedo}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        lastSavedAt={lastSavedAt}
       />
 
       {/* Main Container */}

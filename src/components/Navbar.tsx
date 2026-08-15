@@ -36,6 +36,7 @@ interface NavbarProps {
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  lastSavedAt?: string | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -53,6 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   canRedo = false,
   onUndo,
   onRedo,
+  lastSavedAt,
 }) => {
   return (
     <header className="bg-slate-900 border-b border-slate-800 text-slate-100 sticky top-0 z-30 shadow-md">
@@ -192,14 +194,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>记一笔</span>
             </button>
 
-            <button
-              onClick={onSaveAndSync}
-              title="保存全部数据并同步到数据库"
-              className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all active:scale-95"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>保存数据</span>
-            </button>
+            <div className="flex flex-col items-center gap-0.5">
+              <button
+                onClick={onSaveAndSync}
+                title="保存全部数据并同步到数据库"
+                className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all active:scale-95"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>保存数据</span>
+              </button>
+              <span
+                className={`text-[9px] font-mono whitespace-nowrap ${lastSavedAt ? 'text-slate-500' : 'text-transparent'}`}
+                title="上次点击保存数据的时间(北京时间)"
+              >
+                {lastSavedAt ? `上次保存: ${lastSavedAt}` : '占位'}
+              </span>
+            </div>
 
             <button
               onClick={onExportExcel}
