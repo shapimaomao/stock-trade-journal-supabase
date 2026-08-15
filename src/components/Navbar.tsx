@@ -15,14 +15,15 @@ import {
   Save,
   Lock,
   Undo2,
-  Redo2
+  Redo2,
+  ClipboardList
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { lockPasscodeSystem } from './PasscodeGate';
 
 interface NavbarProps {
-  activeTab: 'ledger' | 'analytics' | 'positions' | 'strategies' | 'import';
-  setActiveTab: (tab: 'ledger' | 'analytics' | 'positions' | 'strategies' | 'import') => void;
+  activeTab: 'ledger' | 'tasks' | 'analytics' | 'positions' | 'strategies' | 'import';
+  setActiveTab: (tab: 'ledger' | 'tasks' | 'analytics' | 'positions' | 'strategies' | 'import') => void;
   user: UserProfile | null;
   onOpenAuthModal: () => void;
   onOpenTradeForm: () => void;
@@ -88,6 +89,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-slate-800 text-slate-300">
                 {tradeCount}
               </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('tasks')}
+              className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'tasks'
+                  ? 'bg-orange-500 text-slate-950 font-semibold shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <ClipboardList className="w-4 h-4" />
+              <span>任务跟进</span>
             </button>
 
             <button
@@ -272,6 +285,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           className="flex flex-col items-center justify-center bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 font-bold rounded-full w-9 h-9 shadow-lg -mt-3 border-2 border-slate-900"
         >
           <PlusCircle className="w-5 h-5" />
+        </button>
+
+        <button
+          onClick={() => setActiveTab('tasks')}
+          className={`flex flex-col items-center py-1 px-2 rounded-lg ${
+            activeTab === 'tasks' ? 'text-orange-400 font-bold bg-slate-900' : 'text-slate-400'
+          }`}
+        >
+          <ClipboardList className="w-4 h-4" />
+          <span className="text-[10px] mt-0.5">任务跟进</span>
         </button>
 
         <button

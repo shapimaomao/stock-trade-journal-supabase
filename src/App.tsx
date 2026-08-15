@@ -23,9 +23,10 @@ import { PositionsSummary } from './components/PositionsSummary';
 import { AuthModal } from './components/AuthModal';
 import { StockQuickSelector } from './components/StockQuickSelector';
 import { PendingFundTradesBanner } from './components/PendingFundTradesBanner';
+import { NotesTaskBoard } from './components/NotesTaskBoard';
 import { PasscodeGate } from './components/PasscodeGate';
 
-import { Cloud, FileSpreadsheet, PlusCircle, RefreshCw, Layers } from 'lucide-react';
+import { Cloud, FileSpreadsheet, PlusCircle, RefreshCw, Layers, Download, Bell, X } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -126,7 +127,7 @@ export default function App() {
     return [];
   });
 
-  const [activeTab, setActiveTab] = useState<'ledger' | 'analytics' | 'positions' | 'strategies' | 'import'>('ledger');
+  const [activeTab, setActiveTab] = useState<'ledger' | 'tasks' | 'analytics' | 'positions' | 'strategies' | 'import'>('ledger');
   
   // Stock Quick Filter State
   const [selectedStockCode, setSelectedStockCode] = useState<string | null>(null);
@@ -147,6 +148,16 @@ export default function App() {
   const [isCloudSynced, setIsCloudSynced] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isCloudReady, setIsCloudReady] = useState(false);
+
+  // 上次点击"保存数据"的北京时间 (localStorage 持久化, 版本更新后依旧保留)
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(() => {
+    return localStorage.getItem('last_save_sync_at');
+  });
+
+  const formatBeijingTime = (ms: number) => {
+    const bj = new Date(ms + 8 * 3600 * 1000);
+    return bj.toISOString().replace('T', ' ').slice(0, 19);
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -433,6 +444,10 @@ export default function App() {
   const handleSaveAndSyncToDb = async () => {
     localStorage.setItem('local_stock_trades', JSON.stringify(trades));
     const result = await pushTradesToCloud(trades);
+    // 记录本次保存的北京时间并持久化
+    const nowStr = formatBeijingTime(Date.now());
+    localStorage.setItem('last_save_sync_at', nowStr);
+    setLastSavedAt(nowStr);
     if (result.ok) {
       showToast('💾 全部交易数据已成功保存，并同步至 Supabase 云端数据库！');
     } else {
@@ -454,6 +469,10 @@ export default function App() {
       if (target && supabase && user) {
         markLocalMutation();
         const row = mapTradeToRow({ ...target, updatedAt: now });
+        // 表单保存时备注状态允许显式清空 (null), 避免 undefined 被映射层丢弃导致云端残留旧状态
+        if ('notesCompleted' in partialTrade) {
+          row.notes_completed = target.notesCompleted ?? null;
+        }
         const { error } = await supabase.from('trades').upsert(row, { onConflict: 'id' });
         if (error) console.error('Supabase 更新交易错误:', error.message);
       }
@@ -483,25 +502,27 @@ export default function App() {
     updateTradesWithHistory(updatedList);
   };
 
-  // Toggle Note Completed Status Handler
-  const handleToggleNoteCompleted = async (tradeId: string) => {
+  // 设置备注状态: true=完成(绿) / false=未完成(橙) / null=取消标记(白)
+  const handleSetNoteStatus = async (tradeId: string, status: boolean | null) => {
     const targetTrade = trades.find(t => t.id === tradeId);
     if (!targetTrade) return;
 
-    const newCompleted = !targetTrade.notesCompleted;
     const now = new Date().toISOString();
 
-    setTrades(prev => prev.map(t => t.id === tradeId ? { ...t, notesCompleted: newCompleted, updatedAt: now } : t));
+    setTrades(prev => prev.map(t => t.id === tradeId ? { ...t, notesCompleted: status ?? undefined, updatedAt: now } : t));
 
     if (supabase && user) {
       markLocalMutation();
       const { error } = await supabase
         .from('trades')
-        .update({ notes_completed: newCompleted, updated_at: now })
+        .update({ notes_completed: status, updated_at: now })
         .eq('id', tradeId);
-      if (error) console.error('更新备注完成状态错误:', error.message);
+      if (error) console.error('更新备注状态错误:', error.message);
     }
-    showToast(newCompleted ? '✅ 备注说明已标为"已完成"，颜色变为绿色' : 'ℹ️ 备注说明已重置为"未完成"，颜色恢复为橙色');
+
+    if (status === true) showToast('✅ 备注已标记为"完成"，文字变绿色');
+    else if (status === false) showToast('⏳ 备注已标记为"未完成"，文字变橙色，已列入任务跟进');
+    else showToast('↩️ 已取消备注状态标记，文字恢复白色');
   };
 
   // Delete Trades Handler
@@ -520,13 +541,14 @@ export default function App() {
 
   // Import Batch Excel Success
   const handleImportSuccess = async (importedList: Partial<TradeRecord>[]) => {
-    const now = new Date().toISOString();
+    // 每条记录的 createdAt 依次递增 1ms, 保证同一天多笔交易严格按 Excel 从上到下的顺序参与计算
+    const baseMs = Date.now();
     const newRecords: TradeRecord[] = importedList.map((t, i) => ({
       ...t,
-      id: t.id || `imp_${Date.now()}_${i}`,
+      id: t.id || `imp_${baseMs}_${i}`,
       userId: user ? user.uid : 'local_user',
-      createdAt: now,
-      updatedAt: now,
+      createdAt: new Date(baseMs + i).toISOString(),
+      updatedAt: new Date(baseMs + i).toISOString(),
     } as TradeRecord));
 
     if (supabase && user) {
@@ -545,6 +567,12 @@ export default function App() {
     localStorage.removeItem('user_has_cleared_trades');
     updateTradesWithHistory(INITIAL_DEMO_TRADES);
     showToast('🔄 已加载示例数据（仅本地预览，点击"保存数据"才会上传云端），并重新倒排对算！');
+  };
+
+  // 智能筛选导出 Excel
+  const markWeeklyExportDone = () => {
+    localStorage.setItem('weekly_excel_export_done', fridayInfo.weekKey);
+    setWeeklyDismissed(true);
   };
 
   // Smart Filtered Export Excel Handler
@@ -574,7 +602,57 @@ export default function App() {
     }
 
     exportTradesToExcel(listToExport, filename);
+    markWeeklyExportDone();
     showToast(`📊 已导出对账单：${filename} (共 ${listToExport.length} 笔明细)`);
+  };
+
+  // ------------------------------------------------------------
+  // 每周五 15:00 (北京时间) 收盘后的导出备份提醒
+  // ------------------------------------------------------------
+  const [nowTick, setNowTick] = useState(Date.now());
+  const [weeklyDismissed, setWeeklyDismissed] = useState(false);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTick(Date.now()), 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // 计算本周五(北京时间) 15:00 收盘时点与周标识
+  const fridayInfo = useMemo(() => {
+    const bj = new Date(nowTick + 8 * 3600 * 1000); // 视作 UTC 读取即为北京时间
+    const day = bj.getUTCDay(); // 0=周日 ... 5=周五
+    const daysSinceFriday = (day + 7 - 5) % 7;
+    const fridayBj = new Date(bj);
+    fridayBj.setUTCDate(bj.getUTCDate() - daysSinceFriday);
+    const weekKey = `${fridayBj.getUTCFullYear()}-${String(fridayBj.getUTCMonth() + 1).padStart(2, '0')}-${String(fridayBj.getUTCDate()).padStart(2, '0')}`;
+    const fridayCloseMs = Date.parse(`${weekKey}T15:00:00+08:00`);
+    return { weekKey, due: nowTick >= fridayCloseMs };
+  }, [nowTick]);
+
+  const weeklyExportReminderVisible =
+    fridayInfo.due &&
+    !weeklyDismissed &&
+    localStorage.getItem('weekly_excel_export_done') !== fridayInfo.weekKey &&
+    trades.length > 0;
+
+  // 打开新增成交记录: 若已选中某只股票/基金, 则默认为该标的添加
+  const openTradeFormWithSelection = () => {
+    if (selectedStockCode) {
+      const t = trades.find(x => x.stockCode === selectedStockCode || x.stockName === selectedStockCode);
+      if (t) {
+        setQuickStockInfo({
+          stockCode: t.stockCode,
+          stockName: t.stockName,
+          account: t.account,
+          strategyName: t.strategyName,
+          strategyType: t.strategyType,
+        });
+      }
+    } else {
+      setQuickStockInfo(null);
+    }
+    setEditingTrade(null);
+    setIsTradeFormOpen(true);
   };
 
   return (
@@ -593,8 +671,8 @@ export default function App() {
         setActiveTab={setActiveTab}
         user={user}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
-        onOpenTradeForm={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
-        onExportExcel={handleExportExcel}
+        onOpenTradeForm={openTradeFormWithSelection}
+        onExportExcel={() => handleExportExcel()}
         onLoadDemoData={handleLoadDemoData}
         onSaveAndSync={handleSaveAndSyncToDb}
         isCloudSynced={isCloudSynced}
@@ -607,6 +685,39 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-[1920px] w-full mx-auto px-2 sm:px-3 lg:px-4 py-3 space-y-3">
+        {/* 每周五 15:00 收盘后: 导出 Excel 备份提醒 */}
+        {weeklyExportReminderVisible && (
+          <div className="bg-amber-500/10 border border-amber-500/40 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-amber-300">📌 每周备份提醒：本周五 15:00 已收盘</div>
+                <div className="text-[11px] text-amber-400/70 mt-0.5">
+                  建议导出本周对账单 Excel 备份一份（{fridayInfo.weekKey} 那周尚未导出）
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleExportExcel()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-slate-950 hover:bg-amber-400 rounded-xl text-xs font-bold transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                立即导出 Excel
+              </button>
+              <button
+                onClick={markWeeklyExportDone}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs transition-all"
+                title="本周不再提醒"
+              >
+                <X className="w-3.5 h-3.5" />
+                本周已处理
+              </button>
+            </div>
+          </div>
+        )}
         {/* KPI Performance Dashboard Banner - Available on all tabs */}
         <DashboardStats metrics={metrics} />
 
@@ -642,10 +753,11 @@ export default function App() {
                 selectedStockCode={selectedStockCode}
                 onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
                 onDeleteTrades={handleDeleteTrades}
-                onAddNewTrade={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
+                onAddNewTrade={openTradeFormWithSelection}
                 onExportExcel={handleExportExcel}
                 onSaveAndSync={handleSaveAndSyncToDb}
-                onToggleNoteCompleted={handleToggleNoteCompleted}
+                onSetNoteStatus={handleSetNoteStatus}
+                lastSavedAt={lastSavedAt}
                 canUndo={canUndo}
                 canRedo={canRedo}
                 onUndo={handleUndo}
@@ -657,13 +769,23 @@ export default function App() {
             <div className="md:hidden">
               <TradeCardList
                 trades={displayTrades}
+                selectedStockCode={selectedStockCode}
                 onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
                 onDeleteTrades={handleDeleteTrades}
-                onAddNewTrade={() => { setEditingTrade(null); setIsTradeFormOpen(true); }}
-                onToggleNoteCompleted={handleToggleNoteCompleted}
+                onAddNewTrade={openTradeFormWithSelection}
+                onSetNoteStatus={handleSetNoteStatus}
               />
             </div>
           </div>
+        )}
+
+        {/* Tab 1.5: 任务跟进 (未完成备注看板) */}
+        {activeTab === 'tasks' && (
+          <NotesTaskBoard
+            trades={trades}
+            onSetNoteStatus={handleSetNoteStatus}
+            onEditTrade={(trade) => { setEditingTrade(trade); setIsTradeFormOpen(true); }}
+          />
         )}
 
 

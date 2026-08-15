@@ -31,7 +31,8 @@ interface TradeTableProps {
   onAddNewTrade: () => void;
   onExportExcel: (customTrades?: TradeRecord[]) => void;
   onSaveAndSync?: () => void;
-  onToggleNoteCompleted?: (tradeId: string) => void;
+  onSetNoteStatus?: (tradeId: string, status: boolean | null) => void;
+  lastSavedAt?: string | null;
   canUndo?: boolean;
   canRedo?: boolean;
   onUndo?: () => void;
@@ -46,7 +47,8 @@ export const TradeTable: React.FC<TradeTableProps> = ({
   onAddNewTrade,
   onExportExcel,
   onSaveAndSync,
-  onToggleNoteCompleted,
+  onSetNoteStatus,
+  lastSavedAt,
   canUndo = false,
   canRedo = false,
   onUndo,
@@ -126,15 +128,16 @@ export const TradeTable: React.FC<TradeTableProps> = ({
     }
   };
 
-  // Auto-scroll down to the last record whenever component mounts or filtered data changes
+  // 仅当用户已选中某只股票/基金时, 才自动滚动到最新一笔记录;
+  // 查看全部(首页)时不自动跳转
   useEffect(() => {
-    if (sortedTrades.length > 0) {
+    if (selectedStockCode && sortedTrades.length > 0) {
       const timer = setTimeout(() => {
         scrollToLastRecord();
       }, 120);
       return () => clearTimeout(timer);
     }
-  }, [sortedTrades.length, searchTerm, strategyFilter, accountFilter, actionFilter, sortField, sortOrder]);
+  }, [selectedStockCode, sortedTrades.length, searchTerm, strategyFilter, accountFilter, actionFilter, sortField, sortOrder]);
 
   const handleSort = (field: keyof TradeRecord) => {
     if (sortField === field) {
@@ -292,14 +295,21 @@ export const TradeTable: React.FC<TradeTableProps> = ({
           )}
 
           {onSaveAndSync && (
-            <button
-              onClick={onSaveAndSync}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all"
-              title="一键保存全部成交记录并同步到数据库"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>保存数据</span>
-            </button>
+            <div className="flex flex-col items-center gap-0.5">
+              <button
+                onClick={onSaveAndSync}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all"
+                title="一键保存全部成交记录并同步到数据库"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>保存数据</span>
+              </button>
+              {lastSavedAt && (
+                <span className="text-[9px] text-slate-500 font-mono whitespace-nowrap" title="上次点击保存数据的时间(北京时间)">
+                  上次保存: {lastSavedAt}
+                </span>
+              )}
+            </div>
           )}
 
           <button
@@ -530,28 +540,49 @@ export const TradeTable: React.FC<TradeTableProps> = ({
                         <div className="flex flex-col items-start gap-0.5">
                           <span
                             className={`text-[11px] break-words line-clamp-2 leading-tight font-medium ${
-                              trade.notesCompleted ? 'text-emerald-400' : 'text-orange-400'
+                              trade.notesCompleted === true
+                                ? 'text-emerald-400'
+                                : trade.notesCompleted === false
+                                ? 'text-orange-400'
+                                : 'text-white'
                             }`}
                             title={trade.notes}
                           >
                             {trade.notes}
                           </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onToggleNoteCompleted?.(trade.id);
-                            }}
-                            className={`inline-flex items-center gap-0.5 px-1 py-0.2 text-[9px] rounded border font-sans font-medium transition-all ${
-                              trade.notesCompleted
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                                : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                            }`}
-                            title={trade.notesCompleted ? '点击重新标记为未完成' : '点击标记备注说明为已完成'}
-                          >
-                            <Check className="w-2.5 h-2.5" />
-                            <span>{trade.notesCompleted ? '已完成' : '完成'}</span>
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSetNoteStatus?.(trade.id, trade.notesCompleted === false ? null : false);
+                              }}
+                              className={`inline-flex items-center gap-0.5 px-1 py-0.2 text-[9px] rounded border font-sans font-medium transition-all ${
+                                trade.notesCompleted === false
+                                  ? 'bg-orange-500/25 text-orange-300 border-orange-500/50'
+                                  : 'bg-slate-950 text-slate-500 border-slate-700 hover:text-orange-300 hover:border-orange-500/40'
+                              }`}
+                              title={trade.notesCompleted === false ? '点击取消未完成标记(恢复白色)' : '标记为未完成(橙色)'}
+                            >
+                              <span>未完成</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSetNoteStatus?.(trade.id, trade.notesCompleted === true ? null : true);
+                              }}
+                              className={`inline-flex items-center gap-0.5 px-1 py-0.2 text-[9px] rounded border font-sans font-medium transition-all ${
+                                trade.notesCompleted === true
+                                  ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50'
+                                  : 'bg-slate-950 text-slate-500 border-slate-700 hover:text-emerald-300 hover:border-emerald-500/40'
+                              }`}
+                              title={trade.notesCompleted === true ? '点击取消完成标记(恢复白色)' : '标记为完成(绿色)'}
+                            >
+                              <Check className="w-2.5 h-2.5" />
+                              <span>完成</span>
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <span className="text-slate-500">-</span>

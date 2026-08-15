@@ -29,7 +29,7 @@ export interface TradeRecord {
   totalBuyCost?: number;      // 本周期买入总投入成本
   totalSellNet?: number;      // 本周期卖出总回收净额
   notes?: string;             // 备注
-  notesCompleted?: boolean;    // 备注完成状态 (完成时绿色，未完成橙色)
+  notesCompleted?: boolean;    // 备注状态三态: undefined=未标记(白) / false=未完成(橙) / true=完成(绿)
   isPendingConfirmation?: boolean; // 支付宝基金等当日未确认价格的标记
   assetType?: 'stock' | 'etf' | 'fund'; // 资产类别
   createdAt: string;

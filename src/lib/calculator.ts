@@ -49,9 +49,12 @@ export function computeTradeDerivedFields(
     // 买入：上一笔累计投入本金 + 当前笔发生金额 + 手续费
     accumulatedCapital = prevCap + amount + fee;
   } else {
-    // 卖出：上一笔累计投入本金 - 当前笔发生金额 + 手续费
+    // 卖出：按成本法扣减累计投入本金（卖出数量 × 卖出前持仓成本）；
+    // 若清仓（累计持仓归零），累计投入本金归零（旧应用口径，已对照 Excel 1462 笔验证）
+    const prevUnitCost = prevPos > 0 ? prevCap / prevPos : 0;
     accumulatedPosition = Math.max(0, prevPos - quantity);
-    accumulatedCapital = prevCap - amount + fee;
+    accumulatedCapital = prevCap - prevUnitCost * quantity;
+    if (accumulatedPosition <= 0) accumulatedCapital = 0;
   }
 
   // 4. 持仓成本：累计投入本金 / 累计持仓
@@ -130,20 +133,18 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
   const updatedAll: TradeRecord[] = [];
 
   Object.values(stockGroups).forEach(group => {
-    // Sort ascending by date; on same date, BUYs and Dividends come before SELLs
+    // 排序规则: 先按成交日期升序; 同一天的多笔交易严格按输入先后顺序
+    // (created_at 时间戳, 导入 Excel 时按行号依次递增; 时间戳相同时保持原输入顺序)
     const sorted = [...group].sort((a, b) => {
       const dateA = new Date(a.tradeDate).getTime();
       const dateB = new Date(b.tradeDate).getTime();
       if (dateA !== dateB) return dateA - dateB;
 
-      if (a.tradeAction !== b.tradeAction) {
-        if (a.tradeAction === 'buy') return -1;
-        if (b.tradeAction === 'buy') return 1;
-        if (a.tradeAction === 'dividend') return -1;
-        if (b.tradeAction === 'dividend') return 1;
-      }
+      const cA = new Date(a.createdAt || 0).getTime();
+      const cB = new Date(b.createdAt || 0).getTime();
+      if (cA !== cB) return cA - cB;
 
-      return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+      return 0; // Array.sort 稳定排序, 保持输入顺序
     });
 
     let currentPos = 0;
@@ -239,11 +240,9 @@ export function recalculateTradesChronologically(trades: TradeRecord[]): TradeRe
         const newPos = Math.max(0, currentPos - quantity);
         currentPos = newPos;
 
-        if (newPos > 0) {
-          currentCostBasis -= costOfSoldShares;
-        } else {
-          currentCostBasis = 0;
-        }
+        // 成本法扣减本金; 清仓时本金归零 (旧应用口径, 已对照 Excel 验证 1462/1462)
+        currentCostBasis -= costOfSoldShares;
+        if (newPos <= 0) currentCostBasis = 0;
 
         const newAccPnL = prevAccPnL + tradeRealizedPnL;
         prevAccPnL = newAccPnL;

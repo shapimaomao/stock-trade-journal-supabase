@@ -23,18 +23,20 @@ import { formatStrategyOwner, getStrategyOwnerBadgeStyle } from '../lib/strategy
 
 interface TradeCardListProps {
   trades: TradeRecord[];
+  selectedStockCode?: string | null;
   onEditTrade: (trade: TradeRecord) => void;
   onDeleteTrades: (ids: string[]) => void;
   onAddNewTrade: () => void;
-  onToggleNoteCompleted?: (tradeId: string) => void;
+  onSetNoteStatus?: (tradeId: string, status: boolean | null) => void;
 }
 
 export const TradeCardList: React.FC<TradeCardListProps> = ({
   trades,
+  selectedStockCode,
   onEditTrade,
   onDeleteTrades,
   onAddNewTrade,
-  onToggleNoteCompleted,
+  onSetNoteStatus,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
@@ -74,14 +76,15 @@ export const TradeCardList: React.FC<TradeCardListProps> = ({
     }
   };
 
+  // 仅当用户已选中某只股票/基金时, 才自动滚动到最新一笔记录
   useEffect(() => {
-    if (filtered.length > 0) {
+    if (selectedStockCode && filtered.length > 0) {
       const timer = setTimeout(() => {
         scrollToLastRecord();
       }, 120);
       return () => clearTimeout(timer);
     }
-  }, [filtered.length, searchTerm]);
+  }, [selectedStockCode, filtered.length, searchTerm]);
 
   const toggleExpand = (id: string) => {
     setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }));
@@ -201,24 +204,42 @@ export const TradeCardList: React.FC<TradeCardListProps> = ({
                   <div className="flex items-start space-x-1.5 min-w-0 flex-1">
                     <FileText className="w-3.5 h-3.5 text-slate-500 flex-shrink-0 mt-0.5" />
                     <span className={`text-xs break-words line-clamp-2 leading-snug font-medium ${
-                      trade.notesCompleted ? 'text-emerald-400' : 'text-orange-400'
+                      trade.notesCompleted === true
+                        ? 'text-emerald-400'
+                        : trade.notesCompleted === false
+                        ? 'text-orange-400'
+                        : 'text-white'
                     }`}>
                       {trade.notes}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onToggleNoteCompleted?.(trade.id)}
-                    className={`flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded-lg border font-medium transition-all ${
-                      trade.notesCompleted
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                        : 'bg-orange-500/20 text-orange-300 border-orange-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                    }`}
-                    title={trade.notesCompleted ? '点击重新标记为未完成' : '点击标记备注说明为已完成'}
-                  >
-                    <Check className="w-3 h-3" />
-                    <span>{trade.notesCompleted ? '已完成' : '完成'}</span>
-                  </button>
+                  <div className="flex-shrink-0 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onSetNoteStatus?.(trade.id, trade.notesCompleted === false ? null : false)}
+                      className={`px-2 py-1 text-[10px] rounded-lg border font-medium transition-all ${
+                        trade.notesCompleted === false
+                          ? 'bg-orange-500/25 text-orange-300 border-orange-500/50'
+                          : 'bg-slate-950 text-slate-500 border-slate-700 hover:text-orange-300 hover:border-orange-500/40'
+                      }`}
+                      title={trade.notesCompleted === false ? '点击取消未完成标记' : '标记为未完成(橙色)'}
+                    >
+                      未完成
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSetNoteStatus?.(trade.id, trade.notesCompleted === true ? null : true)}
+                      className={`flex items-center gap-1 px-2 py-1 text-[10px] rounded-lg border font-medium transition-all ${
+                        trade.notesCompleted === true
+                          ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50'
+                          : 'bg-slate-950 text-slate-500 border-slate-700 hover:text-emerald-300 hover:border-emerald-500/40'
+                      }`}
+                      title={trade.notesCompleted === true ? '点击取消完成标记' : '标记为完成(绿色)'}
+                    >
+                      <Check className="w-3 h-3" />
+                      完成
+                    </button>
+                  </div>
                 </div>
               )}
 

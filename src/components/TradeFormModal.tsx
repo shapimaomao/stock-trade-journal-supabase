@@ -81,7 +81,8 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
   const [quantity, setQuantity] = useState<number | ''>(1000);
   const [fee, setFee] = useState<number | ''>(5.00);
   const [notes, setNotes] = useState('');
-  const [notesCompleted, setNotesCompleted] = useState(false);
+  // 备注状态三态: '' = 未标记(白色) / 'uncomplete' = 未完成(橙色) / 'complete' = 完成(绿色)
+  const [notesStatus, setNotesStatus] = useState<'' | 'uncomplete' | 'complete'>('');
   const [isPendingConfirmation, setIsPendingConfirmation] = useState(false);
 
   // Grid Strategy Helper States
@@ -145,7 +146,11 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       setQuantity(initialTrade.quantity);
       setFee(initialTrade.fee);
       setNotes(initialTrade.notes || '');
-      setNotesCompleted(!!initialTrade.notesCompleted);
+      setNotesStatus(
+        initialTrade.notesCompleted === true ? 'complete'
+        : initialTrade.notesCompleted === false ? 'uncomplete'
+        : ''
+      );
       setIsPendingConfirmation(!!initialTrade.isPendingConfirmation);
     } else if (quickStockInfo) {
       setTradeDate(new Date().toISOString().split('T')[0]);
@@ -154,7 +159,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       setPrice(10.00);
       setFee(getRecommendedFee(quickStockInfo.account, quickStockInfo.stockName, quickStockInfo.stockCode));
       setNotes('');
-      setNotesCompleted(false);
+      setNotesStatus('');
       setIsPendingConfirmation(quickStockInfo.account.includes('支付宝'));
       applyPreset(quickStockInfo);
     } else {
@@ -164,7 +169,7 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       setPrice(10.00);
       setQuantity(1000);
       setNotes('');
-      setNotesCompleted(false);
+      setNotesStatus('');
       setIsPendingConfirmation(false);
       if (presets.length > 0) {
         applyPreset(presets[0]);
@@ -276,7 +281,12 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
       fee: numFee,
       isPendingConfirmation,
       notes: finalNotes,
-      notesCompleted: Boolean(notesCompleted && finalNotes.length > 0),
+      // 三态: undefined=未标记(白) / false=未完成(橙) / true=完成(绿)
+      notesCompleted: finalNotes.length === 0
+        ? undefined
+        : notesStatus === 'complete' ? true
+        : notesStatus === 'uncomplete' ? false
+        : undefined,
     };
 
     const computed = computeTradeDerivedFields(partial, prevTradesForStock);
@@ -859,17 +869,35 @@ export const TradeFormModal: React.FC<TradeFormModalProps> = ({
             <div className="flex items-center justify-between">
               <label className="block font-medium text-slate-300">交易备注 / 下笔买卖挂单准备计划</label>
               {notes.trim().length > 0 && (
-                <label className="inline-flex items-center space-x-1.5 text-xs cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={notesCompleted}
-                    onChange={e => setNotesCompleted(e.target.checked)}
-                    className="w-3.5 h-3.5 rounded text-emerald-500 focus:ring-emerald-500 bg-slate-950 border-slate-700"
-                  />
-                  <span className={`font-medium ${notesCompleted ? 'text-emerald-400' : 'text-orange-400'}`}>
-                    {notesCompleted ? '✓ 备注事项已完成' : '标记为已完成'}
-                  </span>
-                </label>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setNotesStatus(notesStatus === 'uncomplete' ? '' : 'uncomplete')}
+                    className={`px-2 py-0.5 text-[11px] rounded-lg border font-medium transition-all ${
+                      notesStatus === 'uncomplete'
+                        ? 'bg-orange-500/25 text-orange-300 border-orange-500/50'
+                        : 'bg-slate-950 text-slate-400 border-slate-700 hover:text-orange-300 hover:border-orange-500/40'
+                    }`}
+                    title="标记为未完成，备注显示橙色"
+                  >
+                    ⏳ 未完成
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNotesStatus(notesStatus === 'complete' ? '' : 'complete')}
+                    className={`px-2 py-0.5 text-[11px] rounded-lg border font-medium transition-all ${
+                      notesStatus === 'complete'
+                        ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50'
+                        : 'bg-slate-950 text-slate-400 border-slate-700 hover:text-emerald-300 hover:border-emerald-500/40'
+                    }`}
+                    title="标记为完成，备注显示绿色"
+                  >
+                    ✓ 完成
+                  </button>
+                  {notesStatus === '' && (
+                    <span className="text-[10px] text-slate-500">默认白色</span>
+                  )}
+                </div>
               )}
             </div>
             <textarea
